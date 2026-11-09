@@ -47,7 +47,7 @@
 - **PyTorch**：知道 tensor、stream、CUDA graph 大概是什么；写过模型前向更好
 - **推理基础**：读过 vLLM 论文或 nano-vllm 的代码。没读过也行，第 1 章会补
 - **C++**（第 2 章后半起）：能看懂并改写几百行 C++；会用 pybind11 更好
-- **硬件**：不用自己有卡。实验默认在 [Modal](https://modal.com) 上跑（`scripts/modal_run.py`，按秒计费，跑完自动释放）：1.1 和 2.1–2.4 一张 L4 就够，2.5 起换 H100；Starter 计划每月 $30 免费额度大约够做到 2.5，整个第 2 章约 $110；第 3 章 H100；第 4 章 B200；第 5 章 8×H100，最后一节 8×B200。详见 FAQ
+- **硬件**：不用自己有卡。实验默认在 [Modal](https://modal.com) 上跑（`scripts/modal_run.py`，按秒计费，跑完自动释放）：1.1 和 2.1–2.4 一张 L4 就够，2.5 起换 H100；Starter 计划每月 $30 免费额度大约够做到 2.5，整个第 2 章约 $110；第 3 章 H100；第 4 章 B200；第 5 章 8×H100，最后一节 8×B200。详见 FAQ。**本 fork 已改成纯本地跑，见[本地环境](#本地环境本次学习实际使用)**
 - **一个 agent**：Claude Code、Codex、Cursor 之类。本仓库的教学方式是 agent 当导师、你写代码
 
 ## 路线
@@ -120,6 +120,36 @@ AGENTS.md                 给 agent 的教学规则；CLAUDE.md 指向它
 LEARNERS.md               一起学习的人和各自的进度分支
 .claude/skills/           start-step / check-step / compare-step / learn-codebase
 ```
+
+## 本地环境（本次学习实际使用）
+
+本人（Moziofmoon）已完成环境部署，并把实验 GPU 从云端（T4/L4 这一档）换成本地 RTX 5090。下表的配置就是实际跑通 1.1 的那一套，不再依赖 Modal。
+
+| 项 | 实际配置 |
+|---|---|
+| GPU | NVIDIA GeForce RTX 5090 Laptop，24 GB（24463 MiB），直通进 WSL2 |
+| 系统 | Windows 11 + WSL2 Ubuntu 24.04 |
+| Python | 3.12.3（venv `/root/venv-nv`） |
+| 框架 | torch 2.9.0+cu128、flash-attn 2.8.3、triton 3.5.0、transformers 5.22.2 |
+| 模型 | Qwen3-0.6B，`~/huggingface/Qwen3-0.6B`（软链到 ext4 副本，`model.safetensors` 1433 MiB） |
+| 运行方式 | 本地直接跑：`wsl -d Ubuntu-24.04 -u root -- bash <脚本>` |
+
+### 和默认路径的差别
+
+- **GPU**：默认路线在 [Modal](https://modal.com) 上跑（L4 → H100 → B200，按秒计费）。这里换成本地 5090，费用为零；代价是 24 GB 显存，做第 3、4 章的对照实验时要自己算 KV 和权重预算。
+- **sm_120**：5090 是消费级 Blackwell（sm_120），`torch 2.9.0+cu128` + `flash-attn 2.8.3` 实测可用；但第 4 章依赖 SM100 专属 kernel 的部分仍需 B200。
+- **不要用原生 Windows**：本机开着 Smart App Control，会拦未签名的二进制（`_ctypes.pyd`、`shm.dll`），`import torch` 直接失败。改走 WSL2 后正常。
+
+### 本地基线（替换文档里的云端数字）
+
+`bench.py` 默认规模（256 请求，输入 100–1024，输出 100–1024，`max_model_len=4096`）：
+
+| 模式 | 时间 | 吞吐 |
+|---|---|---|
+| CUDA graph（`enforce_eager=False`） | 31.51 s | 4251.58 tok/s |
+| eager（`enforce_eager=True`） | 45.06 s | 2973.32 tok/s |
+
+单步耗时（84 个 prefill + 1378 个 decode，decode 平均 batch 97）：eager 下 CPU 发射 24.5 ms 已是瓶颈，`sample_wait` 只测到 2.1 ms 的尾巴；开 CUDA graph 后发射降到 0.53 ms、`sample_wait` 为 16.83 ms，后者才是每步真实的 GPU 耗时。
 
 ## FAQ
 
